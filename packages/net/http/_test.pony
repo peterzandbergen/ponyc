@@ -376,7 +376,7 @@ actor _HTTPHandlerActor
   new create(h': TestHelper, tries': USize) =>
     h = h'
     tries = tries'
-    h.log("_HTTPHandlerActor create called: ")
+    h.log("_HTTPHandlerActor create called")
 
   be apply(p: Payload val) =>
     h.log("_HTTPHandlerActor apply called: " + tries.string())
@@ -439,4 +439,3 @@ class iso _HTTPConnTest is UnitTest
 
     // Start a long test. Will work for really slow lines. Ahem.
     h.long_test(10_000_000_000)
-    
