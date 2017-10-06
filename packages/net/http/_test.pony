@@ -419,13 +419,13 @@ class iso _HTTPConnTest is UnitTest
     let urls: Array[URL] = 
       [ 
         URL.build(
-        "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
+          "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
         URL.build(
-        "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
+          "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
         URL.build(
-        "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
+          "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
         URL.build(
-        "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
+          "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
       ]
 
     let ha = _HTTPHandlerActor(h, urls.size())
