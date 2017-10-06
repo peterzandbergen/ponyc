@@ -439,3 +439,4 @@ class iso _HTTPConnTest is UnitTest
 
     // Start a long test. Will work for really slow lines. Ahem.
     h.long_test(10_000_000_000)
+
