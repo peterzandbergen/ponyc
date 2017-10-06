@@ -29,7 +29,6 @@ actor Main is TestList
 
     test(_HTTPConnTest)
 
-
 class iso _Encode is UnitTest
   fun name(): String => "net/http/URLEncode.encode"
 
@@ -417,15 +416,16 @@ class iso _HTTPConnTest is UnitTest
   fun name(): String => "net/http/_HTTPConnection._new_conn"
 
   fun apply(h: TestHelper) ? =>
-    let urls: Array[URL] = [
-      URL.build(
-      "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
-      URL.build(
-      "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
-      URL.build(
-      "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
-      URL.build(
-      "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
+    let urls: Array[URL] = 
+      [ 
+        URL.build(
+        "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
+        URL.build(
+        "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
+        URL.build(
+        "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
+        URL.build(
+        "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
       ]
 
     let ha = _HTTPHandlerActor(h, urls.size())
@@ -439,5 +439,4 @@ class iso _HTTPConnTest is UnitTest
 
     // Start a long test. Will work for really slow lines. Ahem.
     h.long_test(10_000_000_000)
-
-
+    
