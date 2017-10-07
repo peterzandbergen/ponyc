@@ -73,8 +73,12 @@ class HTTPClient
     Gets or creates an HTTP Session for the given URL. If a new session
     is created, a new Receive Handler instance is created too.
     """
-    let hs = _HostService(url.scheme, url.host, url.port.string())
-
+    let hs = 
+      _HostService(
+        url.scheme, 
+        url.host, 
+        url.port.string(), 
+        handlermaker)
     try
       // Look for an existing session
       _sessions(hs)?

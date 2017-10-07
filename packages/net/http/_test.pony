@@ -29,6 +29,8 @@ actor Main is TestList
 
     test(_HTTPConnTest)
 
+    test(_ClientConnectionForNewFactory)
+
 class iso _Encode is UnitTest
   fun name(): String => "net/http/URLEncode.encode"
 
@@ -367,7 +369,7 @@ primitive _Test
     h.assert_eq[String](fragment, url.fragment)
 
 
-
+/////////////////////////////////////////////////////////////////////////
 // Actor and classes to test the HTTPClient and modified _HTTPConnection.
 actor _HTTPHandlerActor
   let h: TestHelper
@@ -438,7 +440,65 @@ class iso _HTTPConnTest is UnitTest
       let payload: Payload iso = Payload.request("GET", url)
       client(consume payload, hf)?
     end
+    // Start a long test. Will work for really slow lines. Ahem.
+    h.long_test(10_000_000_000)
 
+//////////////////////////////////////////////////////////////
+// Helper classes for  _ClientConnectionForNewFactory
+actor _FactoryCounter
+  let factories: SetIs[HandlerFactory tag] = factories.create()
+  var n: USize
+  let h: TestHelper
+
+  new create(n': USize, h': TestHelper) =>
+    h = h'
+    n = n'
+
+  be apply(factory: HandlerFactory tag) =>
+    h.assert_false(
+      factories.contains(factory),
+      "Factory unexpectedly being reused.")
+    if (n = n - 1 ) == 1 then
+      h.complete(true)
+    end
+    factories.set(factory)
+
+class _HTTPFactoryCounterFactory
+  let fc: _FactoryCounter
+
+  new val create(fc': _FactoryCounter) =>
+    fc = fc'
+
+  fun apply(session: HTTPSession): HTTPHandler ref^ =>
+    // let fv: HandlerFactory val = recover fa this end
+    _HTTPHandlerFactoryCounter(this, fc)
+
+class _HTTPHandlerFactoryCounter is HTTPHandler
+  let factory: HandlerFactory tag
+  let fc: _FactoryCounter
+
+  new create(factory': HandlerFactory tag, fc': _FactoryCounter) =>
+    factory = factory'
+    fc = fc'
+
+  fun ref apply(payload: Payload val): Any =>
+    fc(factory)
+
+class iso _ClientConnectionForNewFactory is UnitTest
+  fun name(): String => "net/http/_HTTPConnection per factory"
+
+  fun apply(h: TestHelper) ? =>
+    let url = 
+      URL.build(
+        "https://raw.githubusercontent.com/ponylang/ponyc/master/README.md")?
+    let fc = _FactoryCounter(2, h)
+    let f1 = _HTTPFactoryCounterFactory(fc)
+    let f2 = _HTTPFactoryCounterFactory(fc)
+    let client = HTTPClient(h.env.root as TCPConnectionAuth)
+    let p1: Payload iso = Payload.request("GET", url)
+    let p2: Payload iso = Payload.request("GET", url)
+    client(consume p1, f1)?
+    client(consume p2, f1)?
     // Start a long test. Will work for really slow lines. Ahem.
     h.long_test(10_000_000_000)
 
