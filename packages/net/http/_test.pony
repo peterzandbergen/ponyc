@@ -426,6 +426,8 @@ class iso _HTTPConnTest is UnitTest
           "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
         URL.build(
           "https://github.com/ponylang/ponyc/blob/master/CODE_OF_CONDUCT.md")?
+        URL.build(
+          "http://www.nu.nl")?
       ]
 
     let ha = _HTTPHandlerActor(h, urls.size())
