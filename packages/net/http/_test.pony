@@ -1,4 +1,7 @@
 use "ponytest"
+use "net"
+use "collections"
+use "buffered"
 
 actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
@@ -25,6 +28,8 @@ actor Main is TestList
     test(_Valid)
     test(_ToStringFun)
 
+    // Disabled to check if this causes the appveyor block.
+    test(_HTTPConnTest)
 
 class iso _Encode is UnitTest
   fun name(): String => "net/http/URLEncode.encode"
@@ -362,3 +367,196 @@ primitive _Test
     h.assert_eq[String](path, url.path)
     h.assert_eq[String](query, url.query)
     h.assert_eq[String](fragment, url.fragment)
+
+// Actor and classes to test the HTTPClient and modified _HTTPConnection.
+actor _HTTPConnTestHandlerActor
+  let h: TestHelper
+  var tries: USize
+  
+  new create(h': TestHelper, tries': USize) =>
+    h = h'
+    tries = tries'
+    h.log("_HTTPHandlerActor create called")
+
+  be apply(p: Payload val) =>
+    h.log("_HTTPHandlerActor apply called. Tries to go: " + tries.string())
+    if (tries = tries - 1) == 1 then 
+      h.complete(true)
+    end
+
+class _HTTPConnTestHandler is HTTPHandler
+  let h: TestHelper
+  let ha: _HTTPConnTestHandlerActor
+
+  new create(ha': _HTTPConnTestHandlerActor, h': TestHelper) =>
+    ha = ha'
+    h = h'
+    h.log("_HTTPConnTestHandler.create called")
+
+  fun ref apply(payload: Payload val): Any => 
+    h.log("_HTTPConnTestHandler.apply called")
+    ha(payload)
+
+  fun ref chunk(data: ByteSeq val) => 
+    h.log("_HTTPConnTestHandler.chunk called")
+
+class val _HTTPConnTestHandlerFactory is HandlerFactory
+  let h: TestHelper
+  let ha: _HTTPConnTestHandlerActor
+
+  new val create(ha': _HTTPConnTestHandlerActor, h': TestHelper) =>
+    ha = ha'
+    h = h'
+
+  fun apply(session: HTTPSession): HTTPHandler ref^ =>
+    h.log("_HTTPConnTestHandlerFactory.apply called")
+    _HTTPConnTestHandler(ha, h)
+
+class iso _HTTPConnTest is UnitTest
+  fun name(): String => "net/http/_HTTPConnection._new_conn"
+  fun label(): String => "conn-fix"
+
+  fun ref apply(h: TestHelper) ? =>
+    let worker = object
+      var client: (HTTPClient iso| None) = None
+
+      be listening(service: String) =>
+        try
+          // Need two or more request to check if the fix worked.
+          let loops: USize = 3
+          // let service: String val = "12345"
+          h.log("received service: [" + service + "]")
+          let us = "http://localhost:" + service
+          h.log("URL: " + us)
+          let url = URL.build(us)?
+          h.log("url.string()=" + url.string())
+          let ha = _HTTPConnTestHandlerActor(h, loops)
+          let hf = _HTTPConnTestHandlerFactory(ha, h)
+          client = recover iso HTTPClient(h.env.root as TCPConnectionAuth) end
+
+          for _ in Range(0, loops) do 
+            let payload: Payload iso = Payload.request("GET", url)
+            try
+              (client as HTTPClient iso)(consume payload, hf)?
+            end
+            // match client
+            // | let c: HTTPClient iso =>
+            //   c(consume payload, hf)?
+            // end
+          end
+        else 
+          h.log("Error in worker.listening")
+          // h.complete(false)
+        end // try
+
+      be dispose() =>
+        try
+          (client as HTTPClient iso).dispose()
+        end
+
+    end // object
+
+    h.dispose_when_done(worker)
+
+    // Start the fake server.
+    h.dispose_when_done(
+      TCPListener(
+        h.env.root as AmbientAuth,
+        _FixedResponseHTTPServerNotify(
+          h, 
+          {(p: String val) =>
+            worker.listening(p)
+          },
+          recover 
+            [ as String val: 
+              "HTTP/1.1 200 OK"
+              "Server: pony_fake_server"
+              "Content-Length: 0"
+              "Status: 200 OK"
+              ""
+            ]
+          end
+        ),
+        "", // all interfaces
+        "0" // random service
+      )
+    )
+
+    // Start a long test for 5 seconds.
+    h.long_test(5_000_000_000)
+
+primitive _FixedResponseHTTPServerNotify
+  fun apply(
+    h': TestHelper, 
+    f: {(String val)} iso, 
+    r: Array[String val] val)
+    : TCPListenNotify iso^
+  =>
+    recover
+      object is TCPListenNotify iso^
+        let h: TestHelper = h'
+        let listen_cb: {(String val)} iso = consume f
+        let response: Array[String val] val = r
+
+        fun ref listening(listen: TCPListener ref) =>
+          try
+            // Get the service as numeric.
+            let name = listen.local_address().name()?
+            listen_cb(name._2)
+          end
+
+        fun ref not_listening(listen: TCPListener ref) =>
+          h.log("Not listening")
+
+        fun ref closed(listen: TCPListener ref) =>
+          h.log("closed")
+
+        fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^ =>
+          recover 
+            object is TCPConnectionNotify iso^
+            // let response': Array[String val] val = response
+            let reader: Reader iso = Reader
+
+            fun ref received(
+              conn: TCPConnection ref,
+              data: Array[U8] iso,
+              times: USize)
+              : Bool
+            =>
+              // Test if the request was issued completely.
+              reader.append(consume data)
+              while true do
+                let start = 
+                  try 
+                    let l = reader.line()?
+                    l.contains("HTTP/1.1")
+                  else
+                    break
+                  end
+
+                // Write the response.
+                if start then
+                  for r in response.values() do
+                    conn.write(r + "\n")
+                  end
+                end
+              end // while
+              true
+
+            fun ref accepted(conn: TCPConnection ref) =>
+              None
+
+            fun ref connecting(conn: TCPConnection ref, count: U32) =>
+              None
+            
+            fun ref connect_failed(conn: TCPConnection ref) =>
+              None
+            
+            fun ref closed(conn: TCPConnection ref) =>
+              None
+
+          end // object
+        end // recover
+
+      end // object  
+    end // recover
