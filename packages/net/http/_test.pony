@@ -376,11 +376,11 @@ class _HTTPConnTestHandler is HTTPHandler
 
   new create(h': TestHelper) =>
     h = h'
-    h.complete_action("handler create called")
+    h.complete_action("client handler create called")
 
   fun ref apply(payload: Payload val): Any => 
     n_received = n_received + 1
-    h.complete_action("handler apply called " + n_received.string())
+    h.complete_action("client handler apply called " + n_received.string())
 
   fun ref chunk(data: ByteSeq val) => 
     h.log("_HTTPConnTestHandler.chunk called")
@@ -393,7 +393,7 @@ class val _HTTPConnTestHandlerFactory is HandlerFactory
 
   fun apply(session: HTTPSession): HTTPHandler ref^ =>
     h.dispose_when_done(session)
-    h.complete_action("factory apply called")
+    h.complete_action("client factory apply called")
     _HTTPConnTestHandler(h)
 
 class iso _HTTPConnTest is UnitTest
@@ -402,10 +402,12 @@ class iso _HTTPConnTest is UnitTest
 
   fun ref apply(h: TestHelper) ? =>
     // Set expectations.
-    h.expect_action("factory apply called")
-    h.expect_action("handler create called")
-    h.expect_action("handler apply called 1")
-    h.expect_action("handler apply called 2")
+    h.expect_action("client factory apply called")
+    h.expect_action("client handler create called")
+    h.expect_action("client handler apply called 1")
+    h.expect_action("client handler apply called 2")
+    h.expect_action("server writing reponse 1")
+    h.expect_action("server writing reponse 2")
 
     let worker = object
       var client: (HTTPClient iso | None) = None
@@ -506,7 +508,7 @@ primitive _FixedResponseHTTPServerNotify
             object is TCPConnectionNotify iso^
             // let response': Array[String val] val = response
             let reader: Reader iso = Reader
-            var nr: USize = 3
+            var nr: USize = 0
 
             fun ref received(
               conn: TCPConnection ref,
@@ -514,8 +516,6 @@ primitive _FixedResponseHTTPServerNotify
               times: USize)
               : Bool
             =>
-              // h.log("received")
-              // Test if the request was issued completely.
               reader.append(consume data)
               while true do
                 var blank = false
@@ -525,14 +525,12 @@ primitive _FixedResponseHTTPServerNotify
                   if l.size() == 0 then
                     // Write the response.
                     h.log("writing reponse")
+                    nr = nr + 1
+                    h.complete_action("server writing reponse " + nr.string())
                     for r in response.values() do
                       h.log("[" + r + "]")
                       conn.write(r + "\r\n")
                     end
-                    // if (nr = nr - 1) == 1 then
-                    //   h.log("closing connection")
-                    //   conn.dispose()
-                    // end
                   end
                 else
                   h.log("breaking")
