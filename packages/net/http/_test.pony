@@ -370,71 +370,57 @@ primitive _Test
     h.assert_eq[String](fragment, url.fragment)
 
 // Actor and classes to test the HTTPClient and modified _HTTPConnection.
-actor _HTTPConnTestHandlerActor
-  let h: TestHelper
-  var tries: USize
-  
-  new create(h': TestHelper, tries': USize) =>
-    h = h'
-    tries = tries'
-    h.log("_HTTPHandlerActor create called")
-
-  be apply(p: Payload val) =>
-    h.log("_HTTPHandlerActor apply called. Tries to go: " + tries.string())
-    if (tries = tries - 1) == 1 then 
-      h.log("received the correct number of payloads, complete(true)")
-      h.complete(true)
-    end
-
 class _HTTPConnTestHandler is HTTPHandler
+  var n_received: U32 = 0
   let h: TestHelper
-  let ha: _HTTPConnTestHandlerActor
 
-  new create(ha': _HTTPConnTestHandlerActor, h': TestHelper) =>
-    ha = ha'
+  new create(h': TestHelper) =>
     h = h'
-    h.log("_HTTPConnTestHandler.create called")
+    h.complete_action("handler create called")
 
   fun ref apply(payload: Payload val): Any => 
-    h.log("_HTTPConnTestHandler.apply called")
-    ha(payload)
+    n_received = n_received + 1
+    h.complete_action("handler apply called " + n_received.string())
 
   fun ref chunk(data: ByteSeq val) => 
     h.log("_HTTPConnTestHandler.chunk called")
 
 class val _HTTPConnTestHandlerFactory is HandlerFactory
   let h: TestHelper
-  let ha: _HTTPConnTestHandlerActor
 
-  new val create(ha': _HTTPConnTestHandlerActor, h': TestHelper) =>
-    ha = ha'
+  new val create(h': TestHelper) =>
     h = h'
 
   fun apply(session: HTTPSession): HTTPHandler ref^ =>
     h.dispose_when_done(session)
-    h.log("_HTTPConnTestHandlerFactory.apply called")
-    _HTTPConnTestHandler(ha, h)
+    h.complete_action("factory apply called")
+    _HTTPConnTestHandler(h)
 
 class iso _HTTPConnTest is UnitTest
   fun name(): String => "net/http/_HTTPConnection._new_conn"
   fun label(): String => "conn-fix"
 
   fun ref apply(h: TestHelper) ? =>
+    // Set expectations.
+    h.expect_action("factory apply called")
+    h.expect_action("handler create called")
+    h.expect_action("handler apply called 1")
+    h.expect_action("handler apply called 2")
+
     let worker = object
       var client: (HTTPClient iso | None) = None
 
       be listening(service: String) =>
         try
           // Need two or more request to check if the fix worked.
-          let loops: USize = 3
+          let loops: USize = 2
           // let service: String val = "12345"
           h.log("received service: [" + service + "]")
           let us = "http://localhost:" + service
           h.log("URL: " + us)
           let url = URL.build(us)?
           h.log("url.string()=" + url.string())
-          let ha = _HTTPConnTestHandlerActor(h, loops)
-          let hf = _HTTPConnTestHandlerFactory(ha, h)
+          let hf = _HTTPConnTestHandlerFactory(h)
           client = recover iso HTTPClient(h.env.root as TCPConnectionAuth) end
 
           for _ in Range(0, loops) do 
@@ -456,7 +442,7 @@ class iso _HTTPConnTest is UnitTest
 
     end // object
 
-    h.dispose_when_done(worker)
+   // h.dispose_when_done(worker)
 
     // Start the fake server.
     h.dispose_when_done(
@@ -528,7 +514,7 @@ primitive _FixedResponseHTTPServerNotify
               times: USize)
               : Bool
             =>
-              h.log("received")
+              // h.log("received")
               // Test if the request was issued completely.
               reader.append(consume data)
               while true do
@@ -543,10 +529,10 @@ primitive _FixedResponseHTTPServerNotify
                       h.log("[" + r + "]")
                       conn.write(r + "\r\n")
                     end
-                    if (nr = nr - 1) == 1 then
-                      h.log("closing connection")
-                      conn.dispose()
-                    end
+                    // if (nr = nr - 1) == 1 then
+                    //   h.log("closing connection")
+                    //   conn.dispose()
+                    // end
                   end
                 else
                   h.log("breaking")
