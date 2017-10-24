@@ -2,6 +2,7 @@ use "ponytest"
 use "net"
 use "collections"
 use "buffered"
+use "time"
 
 actor Main is TestList
   new create(env: Env) => PonyTest(env, this)
@@ -381,6 +382,7 @@ actor _HTTPConnTestHandlerActor
   be apply(p: Payload val) =>
     h.log("_HTTPHandlerActor apply called. Tries to go: " + tries.string())
     if (tries = tries - 1) == 1 then 
+      h.log("received the correct number of payloads, complete(true)")
       h.complete(true)
     end
 
@@ -409,6 +411,7 @@ class val _HTTPConnTestHandlerFactory is HandlerFactory
     h = h'
 
   fun apply(session: HTTPSession): HTTPHandler ref^ =>
+    h.dispose_when_done(session)
     h.log("_HTTPConnTestHandlerFactory.apply called")
     _HTTPConnTestHandler(ha, h)
 
@@ -418,7 +421,7 @@ class iso _HTTPConnTest is UnitTest
 
   fun ref apply(h: TestHelper) ? =>
     let worker = object
-      var client: (HTTPClient iso| None) = None
+      var client: (HTTPClient iso | None) = None
 
       be listening(service: String) =>
         try
@@ -439,20 +442,17 @@ class iso _HTTPConnTest is UnitTest
             try
               (client as HTTPClient iso)(consume payload, hf)?
             end
-            // match client
-            // | let c: HTTPClient iso =>
-            //   c(consume payload, hf)?
-            // end
           end
         else 
           h.log("Error in worker.listening")
-          // h.complete(false)
+          h.complete(false)
         end // try
 
       be dispose() =>
-        try
-          (client as HTTPClient iso).dispose()
-        end
+        // try
+        //   (client as HTTPClient iso).dispose()
+        // end
+        None
 
     end // object
 
@@ -460,12 +460,13 @@ class iso _HTTPConnTest is UnitTest
 
     // Start the fake server.
     h.dispose_when_done(
-      TCPListener(
+      TCPListener.ip4(
         h.env.root as AmbientAuth,
         _FixedResponseHTTPServerNotify(
           h, 
           {(p: String val) =>
             worker.listening(p)
+            None
           },
           recover 
             [ as String val: 
@@ -502,20 +503,24 @@ primitive _FixedResponseHTTPServerNotify
           try
             // Get the service as numeric.
             let name = listen.local_address().name()?
+            h.log("listening on: " + name._1 + ":" + name._2)
             listen_cb(name._2)
+            h.dispose_when_done(listen)
           end
 
         fun ref not_listening(listen: TCPListener ref) =>
-          h.log("Not listening")
+          h.log("not_listening")
 
         fun ref closed(listen: TCPListener ref) =>
           h.log("closed")
 
         fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^ =>
+          h.log("connected")
           recover 
             object is TCPConnectionNotify iso^
             // let response': Array[String val] val = response
             let reader: Reader iso = Reader
+            var nr: USize = 3
 
             fun ref received(
               conn: TCPConnection ref,
@@ -523,38 +528,56 @@ primitive _FixedResponseHTTPServerNotify
               times: USize)
               : Bool
             =>
+              h.log("received")
               // Test if the request was issued completely.
               reader.append(consume data)
               while true do
-                let start = 
-                  try 
-                    let l = reader.line()?
-                    l.contains("HTTP/1.1")
-                  else
-                    break
+                var blank = false
+                try 
+                  let l = reader.line()?
+                  h.log("received line: " + l)
+                  if l.size() == 0 then
+                    // Write the response.
+                    h.log("writing reponse")
+                    for r in response.values() do
+                      h.log("[" + r + "]")
+                      conn.write(r + "\r\n")
+                    end
+                    if (nr = nr - 1) == 1 then
+                      h.log("closing connection")
+                      conn.dispose()
+                    end
                   end
-
-                // Write the response.
-                if start then
-                  for r in response.values() do
-                    conn.write(r + "\n")
-                  end
+                else
+                  h.log("breaking")
+                  break
                 end
+
               end // while
               true
 
             fun ref accepted(conn: TCPConnection ref) =>
+              h.log("accepted")
+              h.dispose_when_done(conn)
               None
 
             fun ref connecting(conn: TCPConnection ref, count: U32) =>
+              h.log("connecting")
               None
             
             fun ref connect_failed(conn: TCPConnection ref) =>
+              h.log("connect_failed")
               None
             
             fun ref closed(conn: TCPConnection ref) =>
+              h.log("closed")
               None
 
+            fun ref throttled(conn: TCPConnection ref) =>
+              h.log("throttled")
+
+            fun ref unthrottled(conn: TCPConnection ref) =>
+              h.log("unthrottled")
           end // object
         end // recover
 
