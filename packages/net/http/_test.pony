@@ -411,6 +411,7 @@ class iso _HTTPConnTest is UnitTest
     h.expect_action("server listening")
     h.expect_action("server listen connected")
     h.expect_action("server connection accepted")
+    h.expect_action("server connection closed")
 
     let worker = object
       var client: (HTTPClient iso | None) = None
@@ -549,7 +550,9 @@ primitive _FixedResponseHTTPServerNotify
             fun ref accepted(conn: TCPConnection ref) =>
               h.complete_action("server connection accepted")
               h.dispose_when_done(conn)
-              None
+
+            fun ref closed(conn: TCPConnection ref) =>
+              h.complete_action("server connection closed")
 
             fun ref connecting(conn: TCPConnection ref, count: U32) =>
               h.log("connecting")
@@ -559,10 +562,6 @@ primitive _FixedResponseHTTPServerNotify
               h.log("connect_failed")
               None
             
-            fun ref closed(conn: TCPConnection ref) =>
-              h.log("closed")
-              None
-
             fun ref throttled(conn: TCPConnection ref) =>
               h.log("throttled")
 
