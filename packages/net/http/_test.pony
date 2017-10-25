@@ -408,6 +408,9 @@ class iso _HTTPConnTest is UnitTest
     h.expect_action("client handler apply called 2")
     h.expect_action("server writing reponse 1")
     h.expect_action("server writing reponse 2")
+    h.expect_action("server listening")
+    h.expect_action("server listen connected")
+    h.expect_action("server connection accepted")
 
     let worker = object
       var client: (HTTPClient iso | None) = None
@@ -427,6 +430,7 @@ class iso _HTTPConnTest is UnitTest
 
           for _ in Range(0, loops) do 
             let payload: Payload iso = Payload.request("GET", url)
+            payload.set_length(0)
             try
               (client as HTTPClient iso)(consume payload, hf)?
             end
@@ -494,16 +498,18 @@ primitive _FixedResponseHTTPServerNotify
             h.log("listening on: " + name._1 + ":" + name._2)
             listen_cb(name._2)
             h.dispose_when_done(listen)
+            h.complete_action("server listening")
           end
 
         fun ref not_listening(listen: TCPListener ref) =>
+          h.fail_action("server listening")
           h.log("not_listening")
 
         fun ref closed(listen: TCPListener ref) =>
           h.log("closed")
 
         fun ref connected(listen: TCPListener ref): TCPConnectionNotify iso^ =>
-          h.log("connected")
+          h.complete_action("server listen connected")
           recover 
             object is TCPConnectionNotify iso^
             // let response': Array[String val] val = response
@@ -524,13 +530,13 @@ primitive _FixedResponseHTTPServerNotify
                   h.log("received line: " + l)
                   if l.size() == 0 then
                     // Write the response.
-                    h.log("writing reponse")
                     nr = nr + 1
-                    h.complete_action("server writing reponse " + nr.string())
                     for r in response.values() do
                       h.log("[" + r + "]")
                       conn.write(r + "\r\n")
                     end
+                    h.complete_action(
+                      "server writing reponse " + nr.string())
                   end
                 else
                   h.log("breaking")
@@ -541,7 +547,7 @@ primitive _FixedResponseHTTPServerNotify
               true
 
             fun ref accepted(conn: TCPConnection ref) =>
-              h.log("accepted")
+              h.complete_action("server connection accepted")
               h.dispose_when_done(conn)
               None
 
